@@ -718,7 +718,7 @@ func (b *RenderBuffer) SetCell(x, y int, c *Cell) {
 	b.Buffer.SetCell(x, y, c)
 }
 
-// covers reports whether line y's touched span already holds the n cells
+// covers returns whether line y's touched span already holds the n cells
 // from x.
 func (b *RenderBuffer) covers(x, y, n int) bool {
 	if y < 0 || y >= len(b.Touched) {
