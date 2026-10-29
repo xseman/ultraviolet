@@ -486,6 +486,19 @@ func (s *TerminalRenderer) move(newbuf *RenderBuffer, x, y int) {
 
 // cellEqual returns whether the two cells are equal. A nil cell is considered
 // a [EmptyCell].
+// lineEqual reports whether two lines hold the same cells.
+func lineEqual(a, b Line) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !cellEqual(&a[i], &b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func cellEqual(a, b *Cell) bool {
 	if a == b {
 		return true
@@ -1513,8 +1526,12 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
 			// A repaintAll row has to be put back whatever the model says.
+			// A touched row whose cells are what the screen holds already has
+			// nothing to paint: a frame drawn whole over a Clear touches
+			// every row, and most of them come out the same.
 			if size.repaintAll || s.damaged[i] || (newbuf.Touched[i] != nil &&
-				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
+				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1) &&
+				!lineEqual(s.curbuf.Line(i), newbuf.Line(i))) {
 				s.paintLine(newbuf, i, size.repaintAll)
 				changedLines++
 			}
