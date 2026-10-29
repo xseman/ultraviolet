@@ -80,6 +80,13 @@ type LineData struct {
 	oldIndex int //nolint:unused
 }
 
+// touched returns whether the application drew into the line since the last
+// render. resetTouched leaves a {-1, -1} record rather than nil, so both mean
+// unchanged.
+func (ld *LineData) touched() bool {
+	return ld != nil && (ld.FirstCell != -1 || ld.LastCell != -1)
+}
+
 // tFlag is a bitmask of terminal flags.
 type tFlag uint
 
@@ -151,6 +158,13 @@ type TerminalRenderer struct {
 	termResized      bool         // whether the terminal changed size since the last render
 	damaged          []bool       // rows this render disturbed itself, see [TerminalRenderer.damage]
 	logger           Logger       // The logger used for debugging.
+
+	// hashed is the buffer newhash holds a hash of every line of, as the last
+	// render drew it. The screen holds those lines too, except a wide cell
+	// clipped at the margin, which the model keeps blank and which can at
+	// most change the scroll picked. Nil after a render that did not run the
+	// scroll optimizer.
+	hashed *RenderBuffer
 
 	// profile is the color profile to use when downsampling colors. This is
 	// used to determine the appropriate color the terminal can display.
@@ -1490,6 +1504,9 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		s.curbuf.Resize(newWidth, newHeight)
 	}
 
+	reuse := s.hashed == newbuf
+	s.hashed = nil
+
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
@@ -1502,7 +1519,8 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
-			s.scrollOptimize(newbuf)
+			s.scrollOptimize(newbuf, reuse)
+			s.hashed = newbuf
 		}
 
 		var changedLines int
@@ -1513,8 +1531,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
 			// A repaintAll row has to be put back whatever the model says.
-			if size.repaintAll || s.damaged[i] || (newbuf.Touched[i] != nil &&
-				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
+			if size.repaintAll || s.damaged[i] || newbuf.Touched[i].touched() {
 				s.paintLine(newbuf, i, size.repaintAll)
 				changedLines++
 			}

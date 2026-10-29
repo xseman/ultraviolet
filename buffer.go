@@ -650,9 +650,10 @@ type RenderBuffer struct {
 	*Buffer
 
 	// Touched records which lines changed since the last render. It holds at
-	// least one entry per screen row, and a nil entry means that row is
-	// unchanged. Shortening it is not meaningful, since the rows still exist, so
-	// the renderer restores the length rather than checking it at every read.
+	// least one entry per screen row, and a nil entry, or one whose FirstCell
+	// and LastCell are both -1, means that row is unchanged. Shortening it is
+	// not meaningful, since the rows still exist, so the renderer restores the
+	// length rather than checking it at every read.
 	Touched []*LineData
 }
 

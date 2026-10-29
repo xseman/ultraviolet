@@ -1384,6 +1384,24 @@ func BenchmarkRenderFrame(b *testing.B) {
 	}
 }
 
+// BenchmarkRenderFrameScrollOptim is BenchmarkRenderFrame with the scroll
+// optimizer on, for an application that draws only the rows it changes: one
+// row of a 220x55 screen per render.
+func BenchmarkRenderFrameScrollOptim(b *testing.B) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+	buf := NewScreenBuffer(220, 55)
+	NewStyledString(strings.Repeat(strings.Repeat("y", 219)+"\n", 55)).Draw(buf, buf.Bounds())
+	r.Render(buf.RenderBuffer)
+	text := NewStyledString(strings.Repeat("x", 219))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		text.Draw(buf, Rect(0, i%55, 220, 1))
+		r.Render(buf.RenderBuffer)
+	}
+}
+
 // Render across alternating grow/shrink resizes, exercising the early curbuf
 // resize and the forced clear on shrink. The buffers are built up front so the
 // measurement is the renderer's resize handling and not ScreenBuffer.Resize
@@ -2323,4 +2341,46 @@ func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
 	if out := buf.String(); !strings.Contains(out, ansi.EraseLineRight) {
 		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
+}
+
+// The hashes a render leaves behind describe the screen, which is what lets the
+// next render of the same frame take them as its old hashes instead of hashing
+// the screen again. A render that changes the screen any other way forgets them.
+func TestRendererKeepsHashesOnlyWhileTheyDescribeTheScreen(t *testing.T) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+	scr := NewScreenBuffer(8, 6)
+
+	describes := func(step string) {
+		t.Helper()
+		if r.hashed != scr.RenderBuffer {
+			t.Fatalf("%s: the render did not keep the hashes of the frame it drew", step)
+		}
+		for y := range scr.Height() {
+			if r.newhash[y] != hash(&r.hasher, r.curbuf.Line(y)) {
+				t.Errorf("%s: row %d is hashed as a line the screen does not hold", step, y)
+			}
+		}
+	}
+
+	NewStyledString("aa\nbb\ncc\ndd").Draw(scr, scr.Bounds())
+	r.Render(scr.RenderBuffer)
+	describes("first frame")
+
+	scr.DeleteLine(0, 1, nil)
+	NewStyledString("ee").Draw(scr, Rect(0, 5, 8, 1))
+	r.Render(scr.RenderBuffer)
+	describes("scrolled frame")
+
+	r.Erase()
+	NewStyledString("ff").Draw(scr, Rect(0, 0, 8, 1))
+	r.Render(scr.RenderBuffer)
+	if r.hashed != nil {
+		t.Error("a cleared render kept the hashes of the frame before it")
+	}
+
+	NewStyledString("gg").Draw(scr, Rect(0, 1, 8, 1))
+	r.Render(scr.RenderBuffer)
+	describes("frame after a clear")
 }

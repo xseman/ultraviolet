@@ -23,23 +23,21 @@ type hashmap struct {
 // The value used to indicate lines created by insertions and scrolls.
 const newIndex = -1
 
-// updateHashmap updates the hashmap with the new hash value.
-func (s *TerminalRenderer) updateHashmap(newbuf *RenderBuffer) {
+// updateHashmap updates the hashmap with the new hash value. reuse reports
+// that newhash holds every line of newbuf as the last render drew it, which
+// is what the screen holds now, so it becomes oldhash and only the rows
+// touched since are hashed again.
+func (s *TerminalRenderer) updateHashmap(newbuf *RenderBuffer, reuse bool) {
 	height := newbuf.Height()
 
-	if len(s.oldhash) >= height && len(s.newhash) >= height {
-		// rehash changed lines
+	if reuse && len(s.oldhash) == height && len(s.newhash) == height {
+		copy(s.oldhash, s.newhash)
 		for i := range height {
-			if newbuf.Touched[i] != nil {
-				// TODO: Investigate why this is needed. If we remove this
-				// line, scroll optimization does not work correctly. This
-				// should happen else where.
-				s.oldhash[i] = hash(&s.hasher, s.curbuf.Line(i))
+			if newbuf.Touched[i].touched() {
 				s.newhash[i] = hash(&s.hasher, newbuf.Line(i))
 			}
 		}
 	} else {
-		// rehash all
 		if len(s.oldhash) != height {
 			s.oldhash = make([]uint64, height)
 		}

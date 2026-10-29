@@ -8,14 +8,14 @@ import (
 
 // scrollOptimize optimizes the screen to transform the old buffer into the new
 // buffer.
-func (s *TerminalRenderer) scrollOptimize(newbuf *RenderBuffer) {
+func (s *TerminalRenderer) scrollOptimize(newbuf *RenderBuffer, reuse bool) {
 	height := newbuf.Height()
 	if s.oldnum == nil || len(s.oldnum) < height {
 		s.oldnum = append(s.oldnum, make([]int, height-len(s.oldnum))...)
 	}
 
 	// Calculate the indices
-	s.updateHashmap(newbuf)
+	s.updateHashmap(newbuf, reuse)
 	if len(s.hashtab) < height {
 		return
 	}
